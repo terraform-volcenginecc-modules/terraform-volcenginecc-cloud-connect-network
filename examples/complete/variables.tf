@@ -1,3 +1,14 @@
+variable "name" {
+  type        = string
+  description = "Name of the local Transit Router."
+  default     = "group-multi-region-ccn"
+
+  validation {
+    condition     = length(trimspace(var.name)) > 0 && length(var.name) <= 128
+    error_message = "name must be non-empty and no longer than 128 characters."
+  }
+}
+
 variable "region" {
   type        = string
   description = "Volcengine region configured by the caller."
@@ -5,17 +16,12 @@ variable "region" {
 
 variable "primary_vpc_id" {
   type        = string
-  description = "Existing primary-region VPC ID."
+  description = "Existing primary VPC ID."
 }
 
-variable "primary_attachment_subnet_id" {
+variable "primary_subnet_id" {
   type        = string
-  description = "Existing subnet ID for the primary VPC attachment."
-}
-
-variable "primary_attachment_zone_id" {
-  type        = string
-  description = "Availability zone containing primary_attachment_subnet_id."
+  description = "Existing subnet ID used to attach the primary VPC."
 }
 
 variable "branch_vpc_id" {
@@ -23,42 +29,67 @@ variable "branch_vpc_id" {
   description = "Existing branch VPC ID."
 }
 
-variable "branch_attachment_subnet_id" {
+variable "branch_subnet_id" {
   type        = string
-  description = "Existing subnet ID for the branch VPC attachment."
-}
-
-variable "branch_attachment_zone_id" {
-  type        = string
-  description = "Availability zone containing branch_attachment_subnet_id."
-}
-
-variable "direct_connect_gateway_id" {
-  type        = string
-  description = "Existing Direct Connect Gateway ID."
-}
-
-variable "vpn_connection_id" {
-  type        = string
-  description = "Existing IPsec VPN connection ID."
-}
-
-variable "vpn_zone_id" {
-  type        = string
-  description = "Availability zone containing the VPN connection."
+  description = "Existing subnet ID used to attach the branch VPC."
 }
 
 variable "peer_transit_router_id" {
   type        = string
-  description = "Existing peer Transit Router ID in the remote region."
+  description = "Existing same-account peer Transit Router ID."
 }
 
-variable "peer_transit_router_region_id" {
+variable "peer_region_id" {
   type        = string
-  description = "Region ID of peer_transit_router_id, for example ap-southeast-1."
+  description = "Region ID of peer_transit_router_id."
 }
 
-variable "peer_vpc_cidr_block" {
+variable "peer_cidr_block" {
   type        = string
-  description = "CIDR block reachable through the remote peer attachment."
+  description = "Remote IPv4 CIDR reachable through the peer Transit Router."
+
+  validation {
+    condition     = can(cidrnetmask(var.peer_cidr_block))
+    error_message = "peer_cidr_block must be a valid IPv4 CIDR."
+  }
+}
+
+variable "direct_connect_gateway_id" {
+  type        = string
+  description = "Optional existing Direct Connect Gateway ID."
+  default     = null
+}
+
+variable "vpn_connection_id" {
+  type        = string
+  description = "Optional existing IPsec VPN connection ID. Set it together with vpn_zone_id."
+  default     = null
+}
+
+variable "vpn_zone_id" {
+  type        = string
+  description = "Optional availability zone of vpn_connection_id."
+  default     = null
+}
+
+variable "bandwidth_package_id" {
+  type        = string
+  default     = null
+  description = "Existing bandwidth package matching both peer regions. The example never creates or deletes it."
+
+  validation {
+    condition     = var.bandwidth_package_id == null ? true : length(trimspace(var.bandwidth_package_id)) > 0
+    error_message = "bandwidth_package_id must be null or a non-empty existing package ID."
+  }
+}
+
+variable "peer_bandwidth" {
+  type        = number
+  default     = null
+  description = "Optional positive integer bandwidth allocation in Mbps. Set it together with bandwidth_package_id."
+
+  validation {
+    condition     = var.peer_bandwidth == null ? true : var.peer_bandwidth > 0 && floor(var.peer_bandwidth) == var.peer_bandwidth
+    error_message = "peer_bandwidth must be null or a positive integer in Mbps."
+  }
 }

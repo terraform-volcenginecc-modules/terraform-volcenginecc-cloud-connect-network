@@ -14,20 +14,9 @@ variable "description" {
   default     = null
 }
 
-variable "asn" {
-  type        = number
-  description = "Optional BGP ASN. Valid values are 64512-65534 and 4200000000-4294967294."
-  default     = null
-
-  validation {
-    condition     = var.asn == null ? true : (var.asn >= 64512 && var.asn <= 65534) || (var.asn >= 4200000000 && var.asn <= 4294967294)
-    error_message = "asn must be in a documented private ASN range."
-  }
-}
-
 variable "project_name" {
   type        = string
-  description = "Optional Volcengine project name for the Transit Router and bandwidth packages."
+  description = "Optional Volcengine project name for the Transit Router."
   default     = null
 }
 
@@ -56,6 +45,17 @@ variable "vpc_attachments" {
   }))
   description = "VPC attachments keyed by a stable logical name. The module does not own the VPCs or subnets."
   default     = {}
+
+  validation {
+    condition = alltrue([
+      for attachment in values(var.vpc_attachments) :
+      length(attachment.attach_points) > 0 && alltrue([
+        for point in attachment.attach_points :
+        length(trimspace(point.subnet_id)) > 0 && length(trimspace(point.zone_id)) > 0
+      ])
+    ])
+    error_message = "Each VPC attachment requires at least one subnet_id/zone_id attachment point."
+  }
 }
 
 variable "direct_connect_gateway_attachments" {
@@ -97,22 +97,22 @@ variable "peer_attachments" {
   type = map(object({
     peer_transit_router_id        = string
     peer_transit_router_region_id = string
-    bandwidth_package_key         = optional(string)
+    bandwidth_package_id          = optional(string)
     bandwidth                     = optional(number)
     name                          = optional(string)
     description                   = optional(string)
     tags                          = optional(map(string), {})
   }))
-  description = "Cross-region peer attachments keyed by a stable logical name. The peer Transit Router is external, potentially in another account, and must be authorized before apply."
+  description = "Same-account cross-region peer attachments. The peer Transit Router and optional bandwidth package are caller-owned."
   default     = {}
 
   validation {
     condition = alltrue([
       for attachment in values(var.peer_attachments) :
-      (try(attachment.bandwidth_package_key, null) == null && try(attachment.bandwidth, null) == null) ||
-      (try(attachment.bandwidth_package_key, null) != null && try(attachment.bandwidth > 0, false))
+      (attachment.bandwidth_package_id == null && attachment.bandwidth == null) ||
+      (try(length(trimspace(attachment.bandwidth_package_id)) > 0, false) && try(attachment.bandwidth > 0 && floor(attachment.bandwidth) == attachment.bandwidth, false))
     ])
-    error_message = "peer_attachments must set bandwidth_package_key and a positive bandwidth together, or omit both."
+    error_message = "Set a non-empty bandwidth_package_id with positive integer bandwidth, or omit both."
   }
 }
 
@@ -150,24 +150,9 @@ variable "route_entries" {
     condition     = alltrue([for route in values(var.route_entries) : contains(["Attachment", "BlackHole"], route.next_hop_type)])
     error_message = "route_entries[*].next_hop_type must be Attachment or BlackHole."
   }
-}
 
-variable "bandwidth_packages" {
-  type = map(object({
-    local_geographic_region_set_id = string
-    peer_geographic_region_set_id  = string
-    name                           = optional(string)
-    description                    = optional(string)
-    bandwidth                      = optional(number)
-    billing_type                   = optional(number)
-    period                         = optional(number)
-    period_unit                    = optional(string)
-    renew_type                     = optional(string)
-    renew_period                   = optional(number)
-    remain_renew_times             = optional(number)
-    line_operator                  = optional(string)
-    tags                           = optional(map(string), {})
-  }))
-  description = "Cross-region bandwidth packages keyed by a stable logical name. Reference a package from peer_attachments to allocate bandwidth to a managed peer attachment."
-  default     = {}
+  validation {
+    condition     = alltrue([for route in values(var.route_entries) : can(cidrhost(route.destination_cidr_block, 0))])
+    error_message = "route_entries[*].destination_cidr_block must be a valid CIDR."
+  }
 }

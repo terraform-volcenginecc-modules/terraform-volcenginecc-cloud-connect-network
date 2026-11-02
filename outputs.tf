@@ -42,8 +42,3 @@ output "route_entry_ids" {
   description = "Static Transit Router route entry IDs keyed by the input's stable logical keys."
   value       = { for key, route_entry in volcenginecc_transitrouter_transit_router_route_entry.this : key => route_entry.transit_router_route_entry_id }
 }
-
-output "bandwidth_package_ids" {
-  description = "Transit Router bandwidth package IDs keyed by the input's stable logical keys."
-  value       = { for key, bandwidth_package in volcenginecc_transitrouter_transit_router_bandwidth_package.this : key => bandwidth_package.transit_router_bandwidth_package_id }
-}

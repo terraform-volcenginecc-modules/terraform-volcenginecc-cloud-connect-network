@@ -1,4 +1,9 @@
 locals {
+  attachment_keys = concat(
+    keys(var.vpc_attachments), keys(var.direct_connect_gateway_attachments),
+    keys(var.vpn_attachments), keys(var.peer_attachments),
+  )
+
   resource_tags = length(var.tags) == 0 ? null : [
     for key in sort(keys(var.tags)) : {
       key   = key
@@ -42,15 +47,6 @@ locals {
     ]
   }
 
-  bandwidth_package_tags = {
-    for key, bandwidth_package in var.bandwidth_packages : key => length(merge(var.tags, bandwidth_package.tags)) == 0 ? null : [
-      for tag_key in sort(keys(merge(var.tags, bandwidth_package.tags))) : {
-        key   = tag_key
-        value = merge(var.tags, bandwidth_package.tags)[tag_key]
-      }
-    ]
-  }
-
   peer_attachment_tags = {
     for key, attachment in var.peer_attachments : key => length(merge(var.tags, attachment.tags)) == 0 ? null : [
       for tag_key in sort(keys(merge(var.tags, attachment.tags))) : {
@@ -64,10 +60,45 @@ locals {
 resource "volcenginecc_transitrouter_transit_router" "this" {
   transit_router_name = var.name
   description         = var.description
-  asn                 = var.asn
   project_name        = var.project_name
   multicast_enabled   = var.multicast_enabled
   tags                = local.resource_tags
+
+  lifecycle {
+    precondition {
+      condition     = length(local.attachment_keys) == length(distinct(local.attachment_keys))
+      error_message = "Attachment keys must be unique across VPC, Direct Connect, VPN and peer maps."
+    }
+    precondition {
+      condition = alltrue([
+        for relation in concat(values(var.route_table_associations), values(var.route_table_propagations)) :
+        contains(keys(var.route_tables), relation.route_table_key) && contains(local.attachment_keys, relation.attachment_key)
+      ])
+      error_message = "Associations and propagations must reference existing route-table and attachment keys."
+    }
+    precondition {
+      condition     = length(values(var.route_table_associations)) == length(distinct([for relation in values(var.route_table_associations) : relation.attachment_key]))
+      error_message = "An attachment may have only one forwarding association."
+    }
+    precondition {
+      condition = alltrue([
+        for key, vpn in var.vpn_attachments :
+        vpn.route_table_key == null ? true : (
+          contains(keys(var.route_tables), vpn.route_table_key) &&
+          !contains([for relation in values(var.route_table_associations) : relation.attachment_key], key)
+        )
+      ])
+      error_message = "VPN route_table_key must exist and cannot also be managed by an independent association."
+    }
+    precondition {
+      condition = alltrue([
+        for route in values(var.route_entries) :
+        contains(keys(var.route_tables), route.route_table_key) &&
+        (route.next_hop_type == "BlackHole" ? route.next_hop_attachment_key == null : try(contains(local.attachment_keys, route.next_hop_attachment_key), false))
+      ])
+      error_message = "Routes require an existing table and attachment key; BlackHole routes must omit the attachment key."
+    }
+  }
 }
 
 resource "volcenginecc_transitrouter_vpc_attachment" "this" {
@@ -147,32 +178,6 @@ resource "volcenginecc_transitrouter_transit_router_route_entry" "this" {
   }
 }
 
-resource "volcenginecc_transitrouter_transit_router_bandwidth_package" "this" {
-  for_each = var.bandwidth_packages
-
-  local_geographic_region_set_id        = each.value.local_geographic_region_set_id
-  peer_geographic_region_set_id         = each.value.peer_geographic_region_set_id
-  transit_router_bandwidth_package_name = try(each.value.name, null)
-  description                           = try(each.value.description, null)
-  bandwidth                             = try(each.value.bandwidth, null)
-  billing_type                          = try(each.value.billing_type, null)
-  period                                = try(each.value.period, null)
-  period_unit                           = try(each.value.period_unit, null)
-  renew_type                            = try(each.value.renew_type, null)
-  renew_period                          = try(each.value.renew_period, null)
-  remain_renew_times                    = try(each.value.remain_renew_times, null)
-  line_operator                         = try(each.value.line_operator, null)
-  project_name                          = var.project_name
-  tags                                  = local.bandwidth_package_tags[each.key]
-
-  lifecycle {
-    precondition {
-      condition     = (try(each.value.billing_type, null) == null || each.value.billing_type == 1) && (try(each.value.period_unit, null) == null || contains(["Month", "Year"], each.value.period_unit))
-      error_message = "This module supports subscription bandwidth packages only: billing_type must be 1 and period_unit must be Month or Year."
-    }
-  }
-}
-
 resource "volcenginecc_transitrouter_peer_attachment" "this" {
   for_each = var.peer_attachments
 
@@ -181,16 +186,9 @@ resource "volcenginecc_transitrouter_peer_attachment" "this" {
   peer_transit_router_region_id       = each.value.peer_transit_router_region_id
   transit_router_attachment_name      = try(each.value.name, null)
   description                         = try(each.value.description, null)
-  transit_router_bandwidth_package_id = try(volcenginecc_transitrouter_transit_router_bandwidth_package.this[each.value.bandwidth_package_key].transit_router_bandwidth_package_id, null)
+  transit_router_bandwidth_package_id = try(each.value.bandwidth_package_id, null)
   bandwidth                           = try(each.value.bandwidth, null)
   tags                                = local.peer_attachment_tags[each.key]
-
-  lifecycle {
-    precondition {
-      condition     = try(each.value.bandwidth_package_key, null) == null || try(contains(keys(var.bandwidth_packages), each.value.bandwidth_package_key), false)
-      error_message = "peer attachments must reference a key in bandwidth_packages when bandwidth_package_key is set."
-    }
-  }
 }
 
 locals {

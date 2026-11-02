@@ -18,11 +18,6 @@ output "route_table_ids" {
   value       = module.cloud_connect_network.route_table_ids
 }
 
-output "bandwidth_package_ids" {
-  description = "Cross-region bandwidth package IDs."
-  value       = module.cloud_connect_network.bandwidth_package_ids
-}
-
 output "route_table_association_ids" {
   description = "Forwarding route-table association IDs."
   value       = module.cloud_connect_network.route_table_association_ids
@@ -31,4 +26,9 @@ output "route_table_association_ids" {
 output "route_table_propagation_ids" {
   description = "Route-learning propagation IDs."
   value       = module.cloud_connect_network.route_table_propagation_ids
+}
+
+output "route_entry_ids" {
+  description = "Local static route entry IDs."
+  value       = module.cloud_connect_network.route_entry_ids
 }
