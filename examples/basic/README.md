@@ -30,7 +30,7 @@ The caller configures `volcenginecc`.
 
 ## 6. Resources
 
-The published cloud-connect-network module creates the resources.
+The example references the repository root module through `source = "../.."`.
 
 ## 7. Inputs
 
@@ -42,4 +42,4 @@ The example returns the Transit Router and VPC attachment IDs.
 
 ## 9. Notes
 
-Run a second `terraform plan` after apply; acceptance requires no changes. Destroy only after confirming that the VPC attachment is no longer needed.
+Use `-parallelism=1` to serialize Transit Router operations. Run `terraform plan` after apply to review configuration drift. This example creates one VPC attachment and does not configure cross-network communication. Destroy only after confirming that the attachment is no longer needed.

@@ -30,7 +30,7 @@ terraform apply
 
 ## 6. 资源
 
-由已发布的 cloud-connect-network 模块创建资源。
+示例通过 `source = "../.."` 引用仓库根模块。
 
 ## 7. 输入
 
@@ -42,4 +42,4 @@ terraform apply
 
 ## 9. 注意事项
 
-apply 后再次执行 `terraform plan`；验收要求无变更。仅在确认不再需要 VPC 挂载后执行 destroy。
+使用 `-parallelism=1` 串行执行 Transit Router 相关操作。Apply 后可再次执行 `terraform plan` 检查配置漂移。本示例只创建一个 VPC 挂载，不配置跨网络通信。确认不再需要该挂载后再执行 Destroy。
